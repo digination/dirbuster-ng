@@ -1,7 +1,11 @@
+#include <pthread.h>
+
 typedef struct dbng_config {
 
-  int workers;
-  char host[1024];
+  int nb_workers;
   char external_dict[1024];
-
-};
+  uint8_t quiet;
+  pthread_t* workers;
+  char* host;
+	
+} dbng_config;
