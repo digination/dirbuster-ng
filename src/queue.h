@@ -11,7 +11,7 @@ struct elt {
 struct queue {
     struct elt *head;
     struct elt *tail;
-	pthread_mutex_t * mutex;
+	pthread_mutex_t* mutex;
 };
 
 struct queue *queue_add(struct queue *,char*);

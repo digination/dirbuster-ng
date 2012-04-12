@@ -11,7 +11,7 @@
 #include <curl/curl.h>
 
 
-#define DEFAULT_WORKERS 5
+#define DEFAULT_WORKERS 8
 
 dbng_config conf0;
 
