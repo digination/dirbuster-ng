@@ -13,6 +13,9 @@ add_executable(
 	src/dirbuster-ng_config.h
 	src/queue.c
 	src/queue.h
+        src/utils.c
+        src/utils.h
+        src/common.h
         )
 
 find_library (PTHREAD pthread) 

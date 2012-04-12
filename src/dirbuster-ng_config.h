@@ -7,5 +7,6 @@ typedef struct dbng_config {
   pthread_t* workers;
   char *dict;
   char* host;
+  long timeout;
 	
 } dbng_config;

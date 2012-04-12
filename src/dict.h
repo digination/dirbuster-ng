@@ -16,3 +16,5 @@ const char* def_dict[] = {
 "wp-admin"
 
 };
+
+int dd_nbentries = 13;

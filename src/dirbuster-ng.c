@@ -9,7 +9,7 @@ int parse_arguments(int argc, char **argv)
     int index;
     int c;
     int opterr = 0;	
-    while ((c = getopt(argc, argv, "hqvw:d:n:")) != -1) {
+    while ((c = getopt(argc, argv, "hqvw:d:n:t:")) != -1) {
 		switch (c) {
 			case 'v':
 		  		return;
@@ -22,12 +22,17 @@ int parse_arguments(int argc, char **argv)
 			case 'h':
 				usage();
 		    	break;
+		    case 'd':
+		      conf0.dict = optarg;
+			  break;
+			case 't':
+			  conf0.timeout = atoi(optarg);
+			  break;
 			default:
     			break;
 		}
     }
 }
-
 
 int output(char* fmt,...) 
 {
@@ -39,61 +44,104 @@ int output(char* fmt,...)
   va_end(args);
 }
 
-
-int load_dict() {
-  return 0;
+static size_t writeCallback(void *ptr, size_t size, size_t nmemb, void *data)
+{
+  (void)ptr;
+  (void)data;
+  return (size_t)(size * nmemb);
 }
 
-
-void* dbng_engine(void* queue_arg) {
-
+void* dbng_engine(void* queue_arg) 
+{
   struct queue* db_queue = (struct queue*) queue_arg;
   extern dbng_config conf0;
   char * url;
   CURL *curl;
   CURLcode response;
   char *wl;
-  curl = curl_easy_init();
-
+  int final_url_len = 0;
+  int wl_len = 0;
+  long http_code;
+	
   while(db_queue->head) {
 
-    //we lock the queue's mutex, get the entry then unlock
+	curl = curl_easy_init();
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
+	curl_easy_setopt(curl, CURLOPT_TIMEOUT,conf0.timeout);
+	curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION,1);
 	pthread_mutex_lock(db_queue->mutex);
-	//memcpy sur entry -> wl sinon pb race cond ??
-    wl = db_queue->head->entry;
+	wl_len = strlen(db_queue->head->entry)+1;
+    wl = (char*) malloc (wl_len * sizeof(char));
+	setZeroN(wl,wl_len);
+	strncpy(wl,db_queue->head->entry,strlen(db_queue->head->entry));
     queue_rem(db_queue);
 	pthread_mutex_unlock(db_queue->mutex);
 
     //we construct the url given host and wl
-	url = (char*) malloc((strlen(conf0.host) + strlen(wl) +2) * sizeof(char) );
+	final_url_len = strlen(conf0.host) + strlen(wl) +2;
+	url = (char*) malloc(final_url_len * sizeof(char) );
+	setZeroN(url,final_url_len);
 	strncpy(url,conf0.host,strlen(conf0.host));
 	strncat(url,"/",1 * sizeof(char));  
 	strncat(url,wl,strlen(wl));
-	
+    free(wl);
+	  
     curl_easy_setopt(curl, CURLOPT_URL,url);
     response = curl_easy_perform(curl);
-    if (response != 404 ) {
-      output("FOUND %s (response code %d)\n",url,response);    
-    }
+    curl_easy_getinfo (curl, CURLINFO_RESPONSE_CODE, &http_code);
 
+    if (http_code == 200) {
+      output("FOUND %s (response code %d)\n",url,http_code);
+    }  
 	curl_easy_cleanup(curl);
     free(url);
   }		
 }
 
+int load_dict() {
 
+  FILE* dict_fh;
+  
 
-int init_workers() {
-  extern dbng_config conf0;
-  conf0.workers = (pthread_t*) malloc(conf0.nb_workers * sizeof(pthread_t));
+	
 }
 
+
+int init_config(dbng_config* conf0) {
+  conf0->quiet = 0;
+  conf0->nb_workers = DEFAULT_WORKERS;
+  conf0->timeout = DEFAULT_TIMEOUT;
+  conf0->host = NULL;
+  conf0->dict = NULL;
+}
+
+int init_workers(struct queue* db_queue) {
+  extern dbng_config conf0;
+  int i;
+  int ret;
+  conf0.workers = (pthread_t*) malloc(conf0.nb_workers * sizeof(pthread_t));
+  for (i=0;i< conf0.nb_workers;i++) {
+    ret = pthread_create(&conf0.workers[i],NULL,dbng_engine,(void*) db_queue);
+  }
+	
+}
 
 int init_workloads(struct queue* db_queue) {
 	
 	extern dbng_config conf0;
+	extern const char* def_dict[];
+	extern int dd_nbentries;
+	int i;
+
+	//no external dictionary defined, using the internal
 	if (NULL == conf0.dict) {
-      
+      for(i=0;i<dd_nbentries;i++) {
+	    queue_add(db_queue,(char*)def_dict[i]);
+	  }
+	}
+
+    else {
+		
 	}
 }
 
@@ -102,6 +150,7 @@ int usage() {
   printf("Usage: dirbuster-ng [options...] <url>\n\
 Options:\n -w <workers>\tDefines the number of threads to use to make the attack\n\
  -d <dict>\tLoads an external textfile to use as a dictionary\n\
+ -t <seconds>\tSets the timeout in seconds for each http query\n\
  -q\t Enable quiet mode (relevent only with the -W flag)\n\
  -h\t Prints this help then exits\n\
  -v\t Prints the program version then exits\n");
@@ -121,18 +170,21 @@ int main(int argc, char **argv)
 	
   if (argc < 2) usage();
 
-  conf0.host = argv[argc -1];
-	
+  init_config(&conf0);
+  conf0.host = argv[argc -1];	
   db_queue = queue_new();
   db_queue->mutex = (pthread_mutex_t*) malloc(sizeof(pthread_mutex_t));
   pthread_mutex_init(db_queue->mutex,NULL);
 
   parse_arguments(argc,argv);
   if (!conf0.quiet) version();
-  //debug
-  printf("WORKERS:%d\nHOST:%s\nQUIET:%d",
-         conf0.nb_workers,
-         conf0.host,
-         conf0.quiet);
-  init_workers();	
+
+  init_workloads(db_queue);
+  init_workers(db_queue);
+	
+  for(;;) {
+	  sleep(.1);
+	  if (! db_queue->head) break;
+  }
+	
 }
