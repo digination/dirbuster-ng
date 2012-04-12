@@ -62,13 +62,14 @@ void* dbng_engine(void* queue_arg)
   int final_url_len = 0;
   int wl_len = 0;
   long http_code;
+
+  curl = curl_easy_init();
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
+  curl_easy_setopt(curl, CURLOPT_TIMEOUT,conf0.timeout);
+  curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION,1);
 	
   while(db_queue->head) {
-
-	curl = curl_easy_init();
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
-	curl_easy_setopt(curl, CURLOPT_TIMEOUT,conf0.timeout);
-	curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION,1);
+	  
 	pthread_mutex_lock(db_queue->mutex);
 	wl_len = strlen(db_queue->head->entry)+1;
     wl = (char*) malloc (wl_len * sizeof(char));
@@ -93,9 +94,9 @@ void* dbng_engine(void* queue_arg)
     if (http_code == 200) {
       output("FOUND %s (response code %d)\n",url,http_code);
     }  
-	curl_easy_cleanup(curl);
     free(url);
   }		
+  curl_easy_cleanup(curl);
 }
 
 int load_dict() {
