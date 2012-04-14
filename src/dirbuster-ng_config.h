@@ -8,5 +8,6 @@ typedef struct dbng_config {
   char *dict;
   char* host;
   long timeout;
+  char* proxy;
 	
 } dbng_config;

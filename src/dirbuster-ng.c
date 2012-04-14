@@ -9,7 +9,7 @@ int parse_arguments(int argc, char **argv)
     int index;
     int c;
     int opterr = 0;	
-    while ((c = getopt(argc, argv, "hqvw:d:n:t:")) != -1) {
+    while ((c = getopt(argc, argv, "hqvw:d:n:t:X:")) != -1) {
 		switch (c) {
 			case 'v':
 		  		return;
@@ -28,6 +28,8 @@ int parse_arguments(int argc, char **argv)
 			case 't':
 			  conf0.timeout = atoi(optarg);
 			  break;
+			case 'X':
+			  conf0.proxy = optarg;
 			default:
     			break;
 		}
@@ -67,6 +69,10 @@ void* dbng_engine(void* queue_arg)
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
   curl_easy_setopt(curl, CURLOPT_TIMEOUT,conf0.timeout);
   curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION,1);
+
+  if (conf0.proxy != NULL) {
+    curl_easy_setopt(curl, CURLOPT_PROXY,conf0.proxy);
+  }
 	
   while(db_queue->head) {
 	  
@@ -91,19 +97,32 @@ void* dbng_engine(void* queue_arg)
     response = curl_easy_perform(curl);
     curl_easy_getinfo (curl, CURLINFO_RESPONSE_CODE, &http_code);
 
-    if (http_code == 200) {
-      output("FOUND %s (response code %d)\n",url,http_code);
+    if (http_code == 200 || http_code == 403) {
+      output("FOUND %s (response code %d)\n",trim(url),http_code);
     }  
     free(url);
   }		
   curl_easy_cleanup(curl);
 }
 
-int load_dict() {
-
+int load_dict(struct queue* db_queue) {
+	
+  extern dbng_config conf0;	
   FILE* dict_fh;
-  
+  char * buffer = (char*) malloc(4096 * sizeof(char));
+  dict_fh = fopen(conf0.dict,"r");
 
+  if (!dict_fh) {
+    fprintf(stderr,"ERROR: cannot open dictionary, quitting..\n");
+	exit(1);
+  }
+	
+  while (!feof(dict_fh)) {
+    fgets(buffer,4096*sizeof(char),dict_fh);
+	//handling of recursion ?? 
+    //( dup the queue to keep an initial copy, save found dirs)
+    queue_add(db_queue,buffer);
+  }
 	
 }
 
@@ -114,9 +133,11 @@ int init_config(dbng_config* conf0) {
   conf0->timeout = DEFAULT_TIMEOUT;
   conf0->host = NULL;
   conf0->dict = NULL;
+  conf0->proxy = NULL;
 }
 
 int init_workers(struct queue* db_queue) {
+	
   extern dbng_config conf0;
   int i;
   int ret;
@@ -142,17 +163,18 @@ int init_workloads(struct queue* db_queue) {
 	}
 
     else {
-		
+      load_dict(db_queue);
 	}
 }
 
 int usage() {
 
   printf("Usage: dirbuster-ng [options...] <url>\n\
-Options:\n -w <workers>\tDefines the number of threads to use to make the attack\n\
+Options:\n -w <nb_threads>\tDefines the number of threads to use to make the attack\n\
  -d <dict>\tLoads an external textfile to use as a dictionary\n\
  -t <seconds>\tSets the timeout in seconds for each http query\n\
  -q\t Enable quiet mode (relevent only with the -W flag)\n\
+ -X <proxy_server:port>\tUse an HTTP proxy server to perform the queries\n\
  -h\t Prints this help then exits\n\
  -v\t Prints the program version then exits\n");
 
