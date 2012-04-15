@@ -9,7 +9,7 @@ int parse_arguments(int argc, char **argv)
     int index;
     int c;
     int opterr = 0;	
-    while ((c = getopt(argc, argv, "hqvw:d:n:t:X:")) != -1) {
+    while ((c = getopt(argc, argv, "hqvw:d:n:t:X:K:u:U:W:")) != -1) {
 		switch (c) {
 			case 'v':
 		  		return;
@@ -30,6 +30,26 @@ int parse_arguments(int argc, char **argv)
 			  break;
 			case 'X':
 			  conf0.proxy = optarg;
+			  break;
+			case 'A':
+			  conf0.http_auth = optarg;
+			  break;	
+			case 'K':
+			  conf0.proxy_auth = optarg;
+			  break;
+			case 'u':
+			  conf0.uagent = (char*) resolve_ua(optarg);
+			  break;
+		    case 'U':
+			  conf0.uagent = optarg;
+			  break;
+		    case 'W':
+			conf0.output_file = fopen(optarg,"w+");
+			if (! conf0.output_file) {
+				fprintf(stderr,"ERROR: cannot open output file\n");
+				exit(1);
+			}
+		    	break;
 			default:
     			break;
 		}
@@ -45,6 +65,19 @@ int output(char* fmt,...)
   vprintf(fmt,args);
   va_end(args);
 }
+
+int outputToFile(char* fmt,...) {
+
+  va_list args;
+  extern dbng_config conf0;
+  if (!conf0.output_file) return -1;
+  va_start(args,fmt);
+  vfprintf(conf0.output_file,fmt,args);
+  va_end(args);
+
+}
+
+
 
 static size_t writeCallback(void *ptr, size_t size, size_t nmemb, void *data)
 {
@@ -73,6 +106,20 @@ void* dbng_engine(void* queue_arg)
   if (conf0.proxy != NULL) {
     curl_easy_setopt(curl, CURLOPT_PROXY,conf0.proxy);
   }
+
+  if (conf0.uagent != NULL) {
+    curl_easy_setopt(curl, CURLOPT_USERAGENT,conf0.uagent);
+  }
+
+  if (conf0.proxy_auth != NULL) {
+    curl_easy_setopt(curl, CURLOPT_PROXYAUTH,CURLAUTH_BASIC|CURLAUTH_DIGEST);
+	curl_easy_setopt(curl, CURLOPT_PROXYUSERPWD,conf0.proxy_auth);
+  }
+
+  if (conf0.http_auth != NULL) {
+    curl_easy_setopt(curl, CURLOPT_HTTPAUTH,CURLAUTH_BASIC|CURLAUTH_DIGEST);
+	curl_easy_setopt(curl, CURLOPT_USERPWD,conf0.http_auth);
+  }
 	
   while(db_queue->head) {
 	  
@@ -99,6 +146,7 @@ void* dbng_engine(void* queue_arg)
 
     if (http_code == 200 || http_code == 403) {
       output("FOUND %s (response code %d)\n",trim(url),http_code);
+      outputToFile("%s (HTTP code %d)\n",trim(url),http_code);
     }  
     free(url);
   }		
@@ -134,6 +182,10 @@ int init_config(dbng_config* conf0) {
   conf0->host = NULL;
   conf0->dict = NULL;
   conf0->proxy = NULL;
+  conf0->uagent = NULL;
+  conf0->proxy_auth = NULL;
+  conf0->http_auth = NULL;
+  conf0->output_file = NULL;
 }
 
 int init_workers(struct queue* db_queue) {
@@ -171,10 +223,26 @@ int usage() {
 
   printf("Usage: dirbuster-ng [options...] <url>\n\
 Options:\n -w <nb_threads>\tDefines the number of threads to use to make the attack\n\
+ -U <user_agent>\tDefines a custom user-agent\n\
+ -A <username:password>\tSets username and password for HTTP auth\n\
+ -X <proxy_server:port>\tUse an HTTP proxy server to perform the queries\n\
+ -K <username:password>\tSets an username/password couple for proxy auth\n\
  -d <dict>\tLoads an external textfile to use as a dictionary\n\
  -t <seconds>\tSets the timeout in seconds for each http query\n\
+ -W <file>\t Saves the program's result inside a file\n\
+ -u <ua>\tuse a predefined user-agent, corresponding to the most used browsers/crawlers:\n\
+ \t\tff: Mozilla Firefox\n\
+ \t\tchr: Google Chrome\n\
+ \t\tsaf: Apple Safari\n\
+ \t\tope: Opera\n\
+ \t\topem: Opera Mobile\n\
+ \t\tie: Microsoft Internet Explorer\n\
+ \t\tfen: Mozilla Fennec\n\
+ \t\tbb: RIM BlackBerry Browser\n\
+ \t\tgbot: Google Bot\n\
+ \t\tbing: Microsoft Bing Crawler\n\
+ \t\tbspid: Baidu Spider\n\
  -q\t Enable quiet mode (relevent only with the -W flag)\n\
- -X <proxy_server:port>\tUse an HTTP proxy server to perform the queries\n\
  -h\t Prints this help then exits\n\
  -v\t Prints the program version then exits\n");
 

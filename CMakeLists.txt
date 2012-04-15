@@ -16,6 +16,8 @@ add_executable(
         src/utils.c
         src/utils.h
         src/common.h
+        src/uagents.h
+        src/uagents.c
         )
 
 find_library (PTHREAD pthread) 
