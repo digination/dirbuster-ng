@@ -9,7 +9,7 @@ int parse_arguments(int argc, char **argv)
     int index;
     int c;
     int opterr = 0;	
-    while ((c = getopt(argc, argv, "hqvw:d:n:t:X:K:u:U:W:")) != -1) {
+    while ((c = getopt(argc, argv, "hqvVw:d:e:n:t:X:K:u:U:W:")) != -1) {
 		switch (c) {
 			case 'v':
 		  		return;
@@ -24,6 +24,12 @@ int parse_arguments(int argc, char **argv)
 		    	break;
 		    case 'd':
 		      conf0.dict = optarg;
+			  break;
+			case 'e':
+			  conf0.ext = explode(optarg, ',');
+			  break;
+			case 'V':
+			  conf0.verbose = 1;
 			  break;
 			case 't':
 			  conf0.timeout = atoi(optarg);
@@ -148,6 +154,7 @@ void* dbng_engine(void* queue_arg)
       output("FOUND %s (response code %d)\n",trim(url),http_code);
       outputToFile("%s (HTTP code %d)\n",trim(url),http_code);
     }  
+    if(conf0.verbose) output("[%d] %s\n", http_code, trim(url));
     free(url);
   }		
   curl_easy_cleanup(curl);
@@ -165,12 +172,31 @@ int load_dict(struct queue* db_queue) {
 	exit(1);
   }
 	
-  while (!feof(dict_fh)) {
+  if(conf0.ext.nb_strings) {
+    int i;
+    while (!feof(dict_fh)) {
+      if(!fgets(buffer,4096*sizeof(char),dict_fh)) break;
+      size_t entry_len = strlen(buffer);
+      //fgets would also store the trailing newline
+      if(buffer[entry_len-1]=='\n') entry_len-=1;
+      for(i=0; i<conf0.ext.nb_strings; ++i) {
+        strncpy(buffer+entry_len, conf0.ext.strlist[i], 4096-entry_len);
+        buffer[4096-1] = '\0';
+        queue_add(db_queue,buffer);
+      }
+    }
+  }
+  else {
+    while (!feof(dict_fh)) {
     fgets(buffer,4096*sizeof(char),dict_fh);
 	//handling of recursion ?? 
     //( dup the queue to keep an initial copy, save found dirs)
     queue_add(db_queue,buffer);
+    }
   }
+
+  free(buffer);
+  strlfree(&(conf0.ext));
 	
 }
 
@@ -186,6 +212,8 @@ int init_config(dbng_config* conf0) {
   conf0->proxy_auth = NULL;
   conf0->http_auth = NULL;
   conf0->output_file = NULL;
+  conf0->ext = (stringlist){NULL, 0};
+  conf0->verbose = 0;
 }
 
 int init_workers(struct queue* db_queue) {
@@ -197,7 +225,11 @@ int init_workers(struct queue* db_queue) {
   for (i=0;i< conf0.nb_workers;i++) {
     ret = pthread_create(&conf0.workers[i],NULL,dbng_engine,(void*) db_queue);
   }
-	
+
+  void *res;
+  for (i=0;i< conf0.nb_workers;i++) {
+    ret = pthread_join(conf0.workers[i], &res);
+  }
 }
 
 int init_workloads(struct queue* db_queue) {
@@ -228,6 +260,7 @@ Options:\n -w <nb_threads>\tDefines the number of threads to use to make the att
  -X <proxy_server:port>\tUse an HTTP proxy server to perform the queries\n\
  -K <username:password>\tSets an username/password couple for proxy auth\n\
  -d <dict>\tLoads an external textfile to use as a dictionary\n\
+ -e <ext>\tSpecify a list of extensions that would be appended to each word in the dict; seperated by comma\n\
  -t <seconds>\tSets the timeout in seconds for each http query\n\
  -W <file>\t Saves the program's result inside a file\n\
  -u <ua>\tuse a predefined user-agent, corresponding to the most used browsers/crawlers:\n\
@@ -244,6 +277,7 @@ Options:\n -w <nb_threads>\tDefines the number of threads to use to make the att
  \t\tbspid: Baidu Spider\n\
  -q\t Enable quiet mode (relevent only with the -W flag)\n\
  -h\t Prints this help then exits\n\
+ -V \t Verbose. Print each request url and response code\n\
  -v\t Prints the program version then exits\n");
 
   exit(0);

@@ -1,5 +1,6 @@
 #include <pthread.h>
 #include <stdio.h>
+#include "utils.h"
 
 typedef struct dbng_config {
 
@@ -15,5 +16,7 @@ typedef struct dbng_config {
   char* proxy_auth;
   char* http_auth;
   FILE* output_file;	
+  stringlist ext;
+  uint8_t verbose;
 
 } dbng_config;
