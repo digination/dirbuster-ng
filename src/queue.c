@@ -2,7 +2,7 @@
 
 struct queue *queue_add(struct queue *s, char* str)
 {
-    struct elt *p = malloc(1 * sizeof(*p));
+    struct elt *p = malloc(sizeof(*p));
 
     if (NULL == p) {
 	fprintf(stderr, "IN %s, %s: malloc() failed\n", __FILE__,
@@ -10,8 +10,7 @@ struct queue *queue_add(struct queue *s, char* str)
 	return s;
     }
 
-	p->entry  = (char*) calloc (0,(strlen(str) +1) * sizeof(char));
-	strncpy(p->entry,str,strlen(str));
+    p->entry  = strdup(str);
     p->next = NULL;
 
     if (NULL == s) {
