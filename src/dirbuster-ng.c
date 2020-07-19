@@ -12,7 +12,7 @@ int parse_arguments(int argc, char **argv)
     while ((c = getopt(argc, argv, "hqvVw:d:e:n:t:X:K:u:U:W:")) != -1) {
 		switch (c) {
 			case 'v':
-		  		return;
+		  		return 0;
 			case 'w':
     	    	conf0.nb_workers = atoi(optarg);
 		    	break;
